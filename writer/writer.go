@@ -8,6 +8,7 @@ import (
 	"path"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"github.com/xitongsys/parquet-go/common"
@@ -62,7 +63,9 @@ func NewPartitionedParquetWriter(
 
 func (ppw *PartitionedParquetWriter) Write(src interface{}) error {
 	partitionPath := ppw.buildPartitionPath(src)
-	pf, err := ppw.PFileConstructor(partitionPath)
+	filename := time.Now().Format("20060102T150405.000000")
+	fullPath := path.Join(partitionPath, filename) + ".parquet"
+	pf, err := ppw.PFileConstructor(fullPath)
 	if err != nil {
 		return err
 	}
