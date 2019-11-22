@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"path"
 	"reflect"
 	"sync"
 
@@ -15,6 +17,69 @@ import (
 	"github.com/xitongsys/parquet-go/schema"
 	"github.com/xitongsys/parquet-go/source"
 )
+
+// ParquetFileConstructor ...
+type ParquetFileConstructor func(string) (source.ParquetFile, error)
+
+// PartitionedParquetWriter ...
+type PartitionedParquetWriter struct {
+	Root             string
+	Partitions       []string
+	PFileConstructor ParquetFileConstructor
+	*ParquetWriter
+}
+
+// NewPartitionedParquetWriter ...
+func NewPartitionedParquetWriter(
+	root string,
+	partitions []string,
+	pc ParquetFileConstructor,
+	obj interface{},
+	np int64,
+) (*PartitionedParquetWriter, error) {
+
+	var err error
+
+	res := new(PartitionedParquetWriter)
+	res.Root = root
+	res.Partitions = partitions
+	res.PFileConstructor = pc
+
+	pfile, err := res.PFileConstructor(root)
+	if err != nil {
+		return res, err
+	}
+
+	pw, err := NewParquetWriter(pfile, obj, np)
+	if err != nil {
+		return res, err
+	}
+	res.ParquetWriter = pw
+
+	return res, err
+
+}
+
+func (ppw *PartitionedParquetWriter) Write(src interface{}) error {
+	partitionPath := ppw.buildPartitionPath(src)
+	pf, err := ppw.PFileConstructor(partitionPath)
+	if err != nil {
+		return err
+	}
+	ppw.ParquetWriter.PFile = pf
+
+	return ppw.ParquetWriter.Write(src)
+}
+
+func (ppw *PartitionedParquetWriter) buildPartitionPath(src interface{}) string {
+	partitionPath := ppw.Root
+	for _, part := range ppw.Partitions {
+		val := reflect.ValueOf(src).FieldByName(part)
+		subpath := fmt.Sprintf("%v=%v", part, val)
+		partitionPath = path.Join(partitionPath, subpath)
+	}
+	return partitionPath
+}
 
 //ParquetWriter is a writer  parquet file
 type ParquetWriter struct {
